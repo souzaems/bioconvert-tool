@@ -2,71 +2,82 @@ import streamlit as st
 from Bio import SeqIO
 from io import StringIO
 
-# Configuração da Página
-st.set_page_config(page_title="BioConvert - Érica Souza", page_icon="dna")
+st.set_page_config(page_title="BioConvert Pro - Érica Souza", page_icon="🧬")
 
-st.title("🧬 BioConvert: Conversor de Formatos Biológicos")
-st.markdown("""
-Esta ferramenta converte arquivos **FASTA** para formatos comuns em filogenia (**NEXUS, PHYLIP**).
-*Desenvolvido por [Érica Souza](https://github.com/souzaems)*
-""")
+st.title("🧬 BioConvert Pro")
+st.markdown("Converta **FASTA ou GenBank** para NEXUS/PHYLIP com Python.")
 
-# --- NOVO: Seleção do tipo de molécula (Corrige o erro do Nexus) ---
-molecule_type = st.radio(
-    "Qual o tipo das sequências?",
-    ("DNA", "Protein", "RNA"),
-    horizontal=True
-)
+# 1. Sidebar para configurações (Deixa a tela principal limpa)
+with st.sidebar:
+    st.header("Configurações")
+    input_format = st.selectbox(
+        "Formato de Entrada:",
+        ("fasta", "genbank")
+    )
+    molecule_type = st.radio(
+        "Tipo da Molécula:",
+        ("DNA", "Protein", "RNA")
+    )
 
-# Upload do Arquivo
-uploaded_file = st.file_uploader("Arraste seu arquivo FASTA aqui", type=["fasta", "fas", "fa"])
+# 2. Abas: Upload de Arquivo OU Colar Texto (Melhor UX que o Bugaco)
+tab1, tab2 = st.tabs(["📂 Upload de Arquivo", "📝 Colar Texto"])
 
-if uploaded_file is not None:
-    # Ler o arquivo
-    stringio = StringIO(uploaded_file.getvalue().decode("utf-8"))
+sequences = []
+
+# Lógica da Aba 1 (Arquivo)
+with tab1:
+    uploaded_file = st.file_uploader("Arraste seu arquivo aqui", type=["fasta", "fas", "gb", "txt"])
+    if uploaded_file:
+        stringio = StringIO(uploaded_file.getvalue().decode("utf-8"))
+        try:
+            sequences = list(SeqIO.parse(stringio, input_format))
+        except Exception as e:
+            st.error(f"Erro ao ler arquivo: {e}")
+
+# Lógica da Aba 2 (Texto)
+with tab2:
+    text_input = st.text_area("Cole suas sequências aqui:", height=200)
+    if text_input:
+        stringio = StringIO(text_input)
+        try:
+            sequences = list(SeqIO.parse(stringio, input_format))
+        except Exception as e:
+            st.error(f"Erro ao ler texto colado. Verifique se o formato selecionado na barra lateral está correto.")
+
+# 3. Processamento e Download (Só aparece se tiver sequências válidas)
+if sequences:
+    st.success(f"✅ Sucesso! {len(sequences)} sequências carregadas como **{input_format.upper()}**.")
     
-    try:
-        # Lê as sequências
-        sequences = list(SeqIO.parse(stringio, "fasta"))
-        count = len(sequences)
-        
-        # --- A CORREÇÃO MÁGICA AQUI ---
-        # Atribuímos manualmente o tipo de molécula para cada sequência
-        # O Biopython precisa disso para escrever o cabeçalho do NEXUS corretamente
-        for seq in sequences:
-            seq.annotations["molecule_type"] = molecule_type
-        # ------------------------------
+    # Adicionar anotação de tipo (fix do Nexus)
+    for seq in sequences:
+        seq.annotations["molecule_type"] = molecule_type
 
-        st.success(f"Arquivo carregado com sucesso! {count} sequências identificadas.")
-        
-        st.divider()
-        st.subheader("Escolha o formato para download:")
+    st.divider()
+    col1, col2 = st.columns(2)
 
-        # --- Conversão para NEXUS ---
-        nexus_output = StringIO()
-        # Agora o SeqIO sabe que é DNA/Proteína e não vai dar erro
-        SeqIO.write(sequences, nexus_output, "nexus")
-        
+    # Botão NEXUS
+    nexus_output = StringIO()
+    SeqIO.write(sequences, nexus_output, "nexus")
+    with col1:
         st.download_button(
-            label="Baixar em NEXUS (.nex)",
+            label="⬇️ Baixar NEXUS (.nex)",
             data=nexus_output.getvalue(),
-            file_name="converted_sequences.nex",
-            mime="text/plain"
+            file_name="converted.nex",
+            mime="text/plain",
+            use_container_width=True
         )
 
-        # --- Conversão para PHYLIP (Relaxed) ---
-        phylip_output = StringIO()
-        SeqIO.write(sequences, phylip_output, "phylip-relaxed")
+    # Botão PHYLIP
+    phylip_output = StringIO()
+    SeqIO.write(sequences, phylip_output, "phylip-relaxed")
+    with col2:
         st.download_button(
-            label="Baixar em PHYLIP Relaxed (.phy)",
+            label="⬇️ Baixar PHYLIP (.phy)",
             data=phylip_output.getvalue(),
-            file_name="converted_sequences.phy",
-            mime="text/plain"
+            file_name="converted.phy",
+            mime="text/plain",
+            use_container_width=True
         )
 
-    except Exception as e:
-        st.error(f"Erro ao converter. Detalhes técnicos: {e}")
-
-# Rodapé
-st.markdown("---")
-st.caption("Ferramenta criada com Python, Biopython e Streamlit.")
+elif (uploaded_file or text_input) and not sequences:
+    st.warning("Nenhuma sequência encontrada. Verifique se escolheu o formato correto na barra lateral (Fasta vs GenBank).")

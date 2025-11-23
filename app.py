@@ -11,6 +11,13 @@ Esta ferramenta converte arquivos **FASTA** para formatos comuns em filogenia (*
 *Desenvolvido por [Érica Souza](https://github.com/souzaems)*
 """)
 
+# --- NOVO: Seleção do tipo de molécula (Corrige o erro do Nexus) ---
+molecule_type = st.radio(
+    "Qual o tipo das sequências?",
+    ("DNA", "Protein", "RNA"),
+    horizontal=True
+)
+
 # Upload do Arquivo
 uploaded_file = st.file_uploader("Arraste seu arquivo FASTA aqui", type=["fasta", "fas", "fa"])
 
@@ -18,10 +25,18 @@ if uploaded_file is not None:
     # Ler o arquivo
     stringio = StringIO(uploaded_file.getvalue().decode("utf-8"))
     
-    # Tentar ler as sequências
     try:
+        # Lê as sequências
         sequences = list(SeqIO.parse(stringio, "fasta"))
         count = len(sequences)
+        
+        # --- A CORREÇÃO MÁGICA AQUI ---
+        # Atribuímos manualmente o tipo de molécula para cada sequência
+        # O Biopython precisa disso para escrever o cabeçalho do NEXUS corretamente
+        for seq in sequences:
+            seq.annotations["molecule_type"] = molecule_type
+        # ------------------------------
+
         st.success(f"Arquivo carregado com sucesso! {count} sequências identificadas.")
         
         st.divider()
@@ -29,7 +44,9 @@ if uploaded_file is not None:
 
         # --- Conversão para NEXUS ---
         nexus_output = StringIO()
+        # Agora o SeqIO sabe que é DNA/Proteína e não vai dar erro
         SeqIO.write(sequences, nexus_output, "nexus")
+        
         st.download_button(
             label="Baixar em NEXUS (.nex)",
             data=nexus_output.getvalue(),
@@ -38,7 +55,6 @@ if uploaded_file is not None:
         )
 
         # --- Conversão para PHYLIP (Relaxed) ---
-        # Phylip normal corta nomes com 10 caracteres. Relaxed permite nomes longos.
         phylip_output = StringIO()
         SeqIO.write(sequences, phylip_output, "phylip-relaxed")
         st.download_button(
@@ -49,7 +65,7 @@ if uploaded_file is not None:
         )
 
     except Exception as e:
-        st.error(f"Erro ao ler o arquivo FASTA. Verifique a formatação. Detalhes: {e}")
+        st.error(f"Erro ao converter. Detalhes técnicos: {e}")
 
 # Rodapé
 st.markdown("---")
